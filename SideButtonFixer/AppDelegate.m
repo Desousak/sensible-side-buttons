@@ -22,68 +22,143 @@
 #import "AppDelegate.h"
 #import "TouchEvents.h"
 
+@import Quartz;
+@import CoreGraphics;
+
 static NSMutableDictionary<NSNumber*, NSArray<NSDictionary*>*>* swipeInfo = nil;
 static NSArray* nullArray = nil;
 
+
+// MARK: Constants
+static NSString* const vs_code_app_name = @"Code";
+
 static void SBFFakeSwipe(TLInfoSwipeDirection dir) {
-    CGEventRef event1 = tl_CGEventCreateFromGesture((__bridge CFDictionaryRef)(swipeInfo[@(dir)][0]), (__bridge CFArrayRef)nullArray);
-    CGEventRef event2 = tl_CGEventCreateFromGesture((__bridge CFDictionaryRef)(swipeInfo[@(dir)][1]), (__bridge CFArrayRef)nullArray);
-    
-    CGEventPost(kCGHIDEventTap, event1);
-    CGEventPost(kCGHIDEventTap, event2);
-    
-    CFRelease(event1);
-    CFRelease(event2);
+  CGEventRef event1 = tl_CGEventCreateFromGesture((__bridge CFDictionaryRef)(swipeInfo[@(dir)][0]), (__bridge CFArrayRef)nullArray);
+  CGEventRef event2 = tl_CGEventCreateFromGesture((__bridge CFDictionaryRef)(swipeInfo[@(dir)][1]), (__bridge CFArrayRef)nullArray);
+
+  CGEventPost(kCGHIDEventTap, event1);
+  CGEventPost(kCGHIDEventTap, event2);
+
+  CFRelease(event1);
+  CFRelease(event2);
+}
+
+
+
+static BOOL was_mouse_down_inside_vscode(CGPoint mouse_pos)
+{
+  // NOTE(@bojanin): screenPoint is the location of the mouse point (0,0) is BOTTOM LEFT
+
+  CFArrayRef cgwindows_ = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+
+  for (CFIndex i = 0; i < CFArrayGetCount(cgwindows_); i++) {
+    /** NOTE(@bojanin): This is what a cgwindows_ array entry looks like
+     {
+     kCGWindowAlpha = 1;
+     kCGWindowBounds =     {
+       Height = 1057;
+       Width = 1920;
+       X = 0;
+       Y = 23;
+     };
+     kCGWindowIsOnscreen = 1;
+     kCGWindowLayer = 0;
+     kCGWindowMemoryUsage = 1152;
+     kCGWindowNumber = 903;
+     kCGWindowOwnerName = Code; <-------- INDICATES VSCODE APP
+     kCGWindowOwnerPID = 1408;
+     kCGWindowSharingState = 0;
+     kCGWindowStoreType = 1;
+     },
+
+     */
+
+    NSDictionary *windowInfoDictionary = (__bridge NSDictionary *)((CFDictionaryRef)CFArrayGetValueAtIndex(cgwindows_, i));
+    NSString* appName = windowInfoDictionary[(id)kCGWindowOwnerName];
+    if ([appName isEqualToString:vs_code_app_name]) {
+      NSDictionary* windowLocationInfo = windowInfoDictionary[(id)kCGWindowBounds];
+
+      // NOTE(bojanin): window frame start location (0,0) is TOP LEFT of the screen
+      int window_y = [ (NSNumber*)windowLocationInfo[@"Y"] intValue];
+      int window_x = [ (NSNumber*)windowLocationInfo[@"X"] intValue];
+
+      int window_height = [ (NSNumber*)windowLocationInfo[@"Height"] intValue];
+      int window_width = [ (NSNumber*)windowLocationInfo[@"Width"] intValue];
+
+      //NOTE(@bojanin): upper bounds for window location, since only start frame x,y + height,width are given
+      int window_upper_x_bound = window_x + window_width;
+      int window_upper_y_bound = window_y + window_height;
+
+      // NOTE(@bojanin): check if mouse down was inside vscode window location
+
+      if(mouse_pos.x < window_upper_x_bound && mouse_pos.x > window_x &&
+         mouse_pos.y < window_upper_y_bound && mouse_pos.x > window_y) {
+        return YES;
+      }
+
+    }
+  }
+
+  CFRelease(cgwindows_);
+
+  return NO;
 }
 
 static CGEventRef SBFMouseCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *refcon) {
-    int64_t number = CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber);
-    BOOL down = (CGEventGetType(event) == kCGEventOtherMouseDown);
-    
-    BOOL mouseDown = [[NSUserDefaults standardUserDefaults] boolForKey:@"SBFMouseDown"];
-    BOOL swapButtons = [[NSUserDefaults standardUserDefaults] boolForKey:@"SBFSwapButtons"];
-    
-    if (number == (swapButtons ? 4 : 3)) {
-        if ((mouseDown && down) || (!mouseDown && !down)) {
-            SBFFakeSwipe(kTLInfoSwipeLeft);
-        }
-        
-        return NULL;
+  // NOTE(bojanin): VSCode doesnt support sensibleSideButtons, but without sensible side buttons, pressing the side buttons works.
+  // This basically checks if the mouse side button press happened inside VSCode, if so it returns the original CGEventRef.
+  if (was_mouse_down_inside_vscode([NSEvent mouseLocation])) {
+    return event;
+  }
+
+  int64_t number = CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber);
+
+  BOOL down = (CGEventGetType(event) == kCGEventOtherMouseDown);
+
+  BOOL mouseDown = [[NSUserDefaults standardUserDefaults] boolForKey:@"SBFMouseDown"];
+  BOOL swapButtons = [[NSUserDefaults standardUserDefaults] boolForKey:@"SBFSwapButtons"];
+
+  if (number == (swapButtons ? 4 : 3)) {
+    if ((mouseDown && down) || (!mouseDown && !down)) {
+      SBFFakeSwipe(kTLInfoSwipeLeft);
     }
-    else if (number == (swapButtons ? 3 : 4)) {
-        if ((mouseDown && down) || (!mouseDown && !down)) {
-            SBFFakeSwipe(kTLInfoSwipeRight);
-        }
-        
-        return NULL;
+
+    return NULL;
+  }
+  else if (number == (swapButtons ? 3 : 4)) {
+    if ((mouseDown && down) || (!mouseDown && !down)) {
+      SBFFakeSwipe(kTLInfoSwipeRight);
     }
-    else {
-        return event;
-    }
+
+    return NULL;
+  }
+  else {
+    return event;
+  }
 }
 
 typedef NS_ENUM(NSInteger, MenuMode) {
-    MenuModeAccessibility,
-    MenuModeDonation,
-    MenuModeNormal
+  MenuModeAccessibility,
+  MenuModeDonation,
+  MenuModeNormal
 };
 
 typedef NS_ENUM(NSInteger, MenuItem) {
-    MenuItemEnabled = 0,
-    MenuItemEnabledSeparator,
-    MenuItemTriggerOnMouseDown,
-    MenuItemSwapButtons,
-    MenuItemOptionsSeparator,
-    MenuItemStartupHide,
-    MenuItemStartupHideInfo,
-    MenuItemStartupSeparator,
-    MenuItemAboutText,
-    MenuItemAboutSeparator,
-    MenuItemDonate,
-    MenuItemWebsite,
-    MenuItemAccessibility,
-    MenuItemLinkSeparator,
-    MenuItemQuit
+  MenuItemEnabled = 0,
+  MenuItemEnabledSeparator,
+  MenuItemTriggerOnMouseDown,
+  MenuItemSwapButtons,
+  MenuItemOptionsSeparator,
+  MenuItemStartupHide,
+  MenuItemStartupHideInfo,
+  MenuItemStartupSeparator,
+  MenuItemAboutText,
+  MenuItemAboutSeparator,
+  MenuItemDonate,
+  MenuItemWebsite,
+  MenuItemAccessibility,
+  MenuItemLinkSeparator,
+  MenuItemQuit
 };
 
 @interface AppDelegate () <NSMenuDelegate>
@@ -101,297 +176,297 @@ typedef NS_ENUM(NSInteger, MenuItem) {
 @implementation AppDelegate
 
 -(void) dealloc {
-    [self startTap:NO];
-    
-    swipeInfo = nil;
-    nullArray = nil;
+  [self startTap:NO];
+
+  swipeInfo = nil;
+  nullArray = nil;
 }
 
 -(void) setMenuMode:(MenuMode)menuMode {
-    _menuMode = menuMode;
-    AboutView* view = (AboutView*)self.statusItem.menu.itemArray[MenuItemAboutText].view;
-    view.menuMode = menuMode;
-    [self refreshSettings];
+  _menuMode = menuMode;
+  AboutView* view = (AboutView*)self.statusItem.menu.itemArray[MenuItemAboutText].view;
+  view.menuMode = menuMode;
+  [self refreshSettings];
 }
 
 // if the application is launched when it's already running, show the icon in the menu bar again
 -(BOOL) applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
-    if (@available(macOS 10.12, *)) {
-        [self.statusItem setVisible:YES];
-    }
-    return NO;
+  if (@available(macOS 10.12, *)) {
+    [self.statusItem setVisible:YES];
+  }
+  return NO;
 }
 
 -(void) applicationDidFinishLaunching:(NSNotification *)aNotification {
-    [[NSUserDefaults standardUserDefaults] registerDefaults:@{
-                                                              @"SBFWasEnabled": @YES,
-                                                              @"SBFMouseDown": @YES,
-                                                              @"SBFDonated": @NO,
-                                                              @"SBFSwapButtons": @NO
-                                                              }];
-    
-    // setup globals
-    {
-        swipeInfo = [NSMutableDictionary dictionary];
-        
-        for (NSNumber* direction in @[ @(kTLInfoSwipeUp), @(kTLInfoSwipeDown), @(kTLInfoSwipeLeft), @(kTLInfoSwipeRight) ]) {
-            NSDictionary* swipeInfo1 = [NSDictionary dictionaryWithObjectsAndKeys:
-                                        @(kTLInfoSubtypeSwipe), kTLInfoKeyGestureSubtype,
-                                        @(1), kTLInfoKeyGesturePhase,
-                                        nil];
-            
-            NSDictionary* swipeInfo2 = [NSDictionary dictionaryWithObjectsAndKeys:
-                                        @(kTLInfoSubtypeSwipe), kTLInfoKeyGestureSubtype,
-                                        direction, kTLInfoKeySwipeDirection,
-                                        @(4), kTLInfoKeyGesturePhase,
-                                        nil];
-            
-            swipeInfo[direction] = @[ swipeInfo1, swipeInfo2 ];
-        }
-        
-        nullArray = @[];
-    }
-    
-    // create status bar item
-    {
-        self.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
-    }
-    
-    // create menu
-    {
-        NSMenu* menu = [NSMenu new];
-        
-        menu.autoenablesItems = NO;
-        menu.delegate = self;
-        
-        NSMenuItem* enabledItem = [[NSMenuItem alloc] initWithTitle:@"Enabled" action:@selector(enabledToggle:) keyEquivalent:@"e"];
-        [menu addItem:enabledItem];
-        assert(menu.itemArray.count - 1 == MenuItemEnabled);
-        
-        [menu addItem:[NSMenuItem separatorItem]];
-        assert(menu.itemArray.count - 1 == MenuItemEnabledSeparator);
-        
-        NSMenuItem* modeItem = [[NSMenuItem alloc] initWithTitle:@"Trigger on Mouse Down" action:@selector(mouseDownToggle:) keyEquivalent:@""];
-        modeItem.state = NSControlStateValueOn;
-        [menu addItem:modeItem];
-        assert(menu.itemArray.count - 1 == MenuItemTriggerOnMouseDown);
-        
-        NSMenuItem* swapItem = [[NSMenuItem alloc] initWithTitle:@"Swap Buttons" action:@selector(swapToggle:) keyEquivalent:@""];
-        swapItem.state = NSControlStateValueOff;
-        [menu addItem:swapItem];
-        assert(menu.itemArray.count - 1 == MenuItemSwapButtons);
-        
-        [menu addItem:[NSMenuItem separatorItem]];
-        assert(menu.itemArray.count - 1 == MenuItemOptionsSeparator);
-        
-        
-        NSMenuItem* hideItem = [[NSMenuItem alloc] initWithTitle:@"Hide Menu Bar Icon" action:@selector(hideMenubarItem:) keyEquivalent:@""];
-        [menu addItem:hideItem];
-        assert(menu.itemArray.count - 1 == MenuItemStartupHide);
-        
-        NSMenuItem* hideInfoItem = [[NSMenuItem alloc] initWithTitle:@"Relaunch application to show again" action:NULL keyEquivalent:@""];
-        [hideInfoItem setEnabled:NO];
-        [menu addItem:hideInfoItem];
-        assert(menu.itemArray.count - 1 == MenuItemStartupHideInfo);
-        
-        [menu addItem:[NSMenuItem separatorItem]];
-        assert(menu.itemArray.count - 1 == MenuItemStartupSeparator);
-        
-        AboutView* text = [[AboutView alloc] initWithFrame:NSMakeRect(0, 0, 320, 100)]; //arbitrary height
-        NSMenuItem* aboutText = [[NSMenuItem alloc] initWithTitle:@"Text" action:NULL keyEquivalent:@""];
-        aboutText.view = text;
-        [menu addItem:aboutText];
-        assert(menu.itemArray.count - 1 == MenuItemAboutText);
-        
-        [menu addItem:[NSMenuItem separatorItem]];
-        assert(menu.itemArray.count - 1 == MenuItemAboutSeparator);
-        
-        NSString* appName = [[[NSBundle mainBundle] infoDictionary] objectForKey:(NSString*)kCFBundleNameKey];
-        [menu addItem:[[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"%@ Website", appName] action:@selector(donate:) keyEquivalent:@""]];
-        assert(menu.itemArray.count - 1 == MenuItemDonate);
-        
-        [menu addItem:[[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"%@ Website", appName] action:@selector(website:) keyEquivalent:@""]];
-        assert(menu.itemArray.count - 1 == MenuItemWebsite);
-        
-        [menu addItem:[[NSMenuItem alloc] initWithTitle:@"Open Accessibility Whitelist" action:@selector(accessibility:) keyEquivalent:@""]];
-        assert(menu.itemArray.count - 1 == MenuItemAccessibility);
-        
-        [menu addItem:[NSMenuItem separatorItem]];
-        assert(menu.itemArray.count - 1 == MenuItemLinkSeparator);
+  [[NSUserDefaults standardUserDefaults] registerDefaults:@{
+    @"SBFWasEnabled": @YES,
+    @"SBFMouseDown": @YES,
+    @"SBFDonated": @NO,
+    @"SBFSwapButtons": @NO
+  }];
 
-        NSMenuItem* quit = [[NSMenuItem alloc] initWithTitle:@"Quit" action:@selector(quit:) keyEquivalent:@"q"];
-        quit.keyEquivalentModifierMask = NSEventModifierFlagCommand;
-        [menu addItem:quit];
-        assert(menu.itemArray.count - 1 == MenuItemQuit);
-        
-        self.statusItem.menu = menu;
+  // setup globals
+  {
+    swipeInfo = [NSMutableDictionary dictionary];
+
+    for (NSNumber* direction in @[ @(kTLInfoSwipeUp), @(kTLInfoSwipeDown), @(kTLInfoSwipeLeft), @(kTLInfoSwipeRight) ]) {
+      NSDictionary* swipeInfo1 = [NSDictionary dictionaryWithObjectsAndKeys:
+                                  @(kTLInfoSubtypeSwipe), kTLInfoKeyGestureSubtype,
+                                  @(1), kTLInfoKeyGesturePhase,
+                                  nil];
+
+      NSDictionary* swipeInfo2 = [NSDictionary dictionaryWithObjectsAndKeys:
+                                  @(kTLInfoSubtypeSwipe), kTLInfoKeyGestureSubtype,
+                                  direction, kTLInfoKeySwipeDirection,
+                                  @(4), kTLInfoKeyGesturePhase,
+                                  nil];
+
+      swipeInfo[direction] = @[ swipeInfo1, swipeInfo2 ];
     }
-    
-    [self startTap:[[NSUserDefaults standardUserDefaults] boolForKey:@"SBFWasEnabled"]];
-    
-    [self updateMenuMode];
-    [self refreshSettings];
+
+    nullArray = @[];
+  }
+
+  // create status bar item
+  {
+    self.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
+  }
+
+  // create menu
+  {
+    NSMenu* menu = [NSMenu new];
+
+    menu.autoenablesItems = NO;
+    menu.delegate = self;
+
+    NSMenuItem* enabledItem = [[NSMenuItem alloc] initWithTitle:@"Enabled" action:@selector(enabledToggle:) keyEquivalent:@"e"];
+    [menu addItem:enabledItem];
+    assert(menu.itemArray.count - 1 == MenuItemEnabled);
+
+    [menu addItem:[NSMenuItem separatorItem]];
+    assert(menu.itemArray.count - 1 == MenuItemEnabledSeparator);
+
+    NSMenuItem* modeItem = [[NSMenuItem alloc] initWithTitle:@"Trigger on Mouse Down" action:@selector(mouseDownToggle:) keyEquivalent:@""];
+    modeItem.state = NSControlStateValueOn;
+    [menu addItem:modeItem];
+    assert(menu.itemArray.count - 1 == MenuItemTriggerOnMouseDown);
+
+    NSMenuItem* swapItem = [[NSMenuItem alloc] initWithTitle:@"Swap Buttons" action:@selector(swapToggle:) keyEquivalent:@""];
+    swapItem.state = NSControlStateValueOff;
+    [menu addItem:swapItem];
+    assert(menu.itemArray.count - 1 == MenuItemSwapButtons);
+
+    [menu addItem:[NSMenuItem separatorItem]];
+    assert(menu.itemArray.count - 1 == MenuItemOptionsSeparator);
+
+
+    NSMenuItem* hideItem = [[NSMenuItem alloc] initWithTitle:@"Hide Menu Bar Icon" action:@selector(hideMenubarItem:) keyEquivalent:@""];
+    [menu addItem:hideItem];
+    assert(menu.itemArray.count - 1 == MenuItemStartupHide);
+
+    NSMenuItem* hideInfoItem = [[NSMenuItem alloc] initWithTitle:@"Relaunch application to show again" action:NULL keyEquivalent:@""];
+    [hideInfoItem setEnabled:NO];
+    [menu addItem:hideInfoItem];
+    assert(menu.itemArray.count - 1 == MenuItemStartupHideInfo);
+
+    [menu addItem:[NSMenuItem separatorItem]];
+    assert(menu.itemArray.count - 1 == MenuItemStartupSeparator);
+
+    AboutView* text = [[AboutView alloc] initWithFrame:NSMakeRect(0, 0, 320, 100)]; //arbitrary height
+    NSMenuItem* aboutText = [[NSMenuItem alloc] initWithTitle:@"Text" action:NULL keyEquivalent:@""];
+    aboutText.view = text;
+    [menu addItem:aboutText];
+    assert(menu.itemArray.count - 1 == MenuItemAboutText);
+
+    [menu addItem:[NSMenuItem separatorItem]];
+    assert(menu.itemArray.count - 1 == MenuItemAboutSeparator);
+
+    NSString* appName = [[[NSBundle mainBundle] infoDictionary] objectForKey:(NSString*)kCFBundleNameKey];
+    [menu addItem:[[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"%@ Website", appName] action:@selector(donate:) keyEquivalent:@""]];
+    assert(menu.itemArray.count - 1 == MenuItemDonate);
+
+    [menu addItem:[[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"%@ Website", appName] action:@selector(website:) keyEquivalent:@""]];
+    assert(menu.itemArray.count - 1 == MenuItemWebsite);
+
+    [menu addItem:[[NSMenuItem alloc] initWithTitle:@"Open Accessibility Whitelist" action:@selector(accessibility:) keyEquivalent:@""]];
+    assert(menu.itemArray.count - 1 == MenuItemAccessibility);
+
+    [menu addItem:[NSMenuItem separatorItem]];
+    assert(menu.itemArray.count - 1 == MenuItemLinkSeparator);
+
+    NSMenuItem* quit = [[NSMenuItem alloc] initWithTitle:@"Quit" action:@selector(quit:) keyEquivalent:@"q"];
+    quit.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+    [menu addItem:quit];
+    assert(menu.itemArray.count - 1 == MenuItemQuit);
+
+    self.statusItem.menu = menu;
+  }
+
+  [self startTap:[[NSUserDefaults standardUserDefaults] boolForKey:@"SBFWasEnabled"]];
+
+  [self updateMenuMode];
+  [self refreshSettings];
 }
 
 -(void) updateMenuMode {
-    [self updateMenuMode:YES];
+  [self updateMenuMode:YES];
 }
 
 -(void) updateMenuMode:(BOOL)active {
-    // TODO: this actually returns YES if SSB is deleted (not disabled) from Accessibility
-    NSDictionary* options = @{ (__bridge id)kAXTrustedCheckOptionPrompt: @(active ? YES : NO) };
-    BOOL accessibilityEnabled = AXIsProcessTrustedWithOptions((CFDictionaryRef)options);
-    //BOOL accessibilityEnabled = YES; //is accessibility even required? seems to work fine without it
-    
-    if (accessibilityEnabled) {
-        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"SBFDonated"]) {
-            self.menuMode = MenuModeNormal;
-        }
-        else {
-            self.menuMode = MenuModeDonation;
-        }
+  // TODO: this actually returns YES if SSB is deleted (not disabled) from Accessibility
+  NSDictionary* options = @{ (__bridge id)kAXTrustedCheckOptionPrompt: @(active ? YES : NO) };
+  BOOL accessibilityEnabled = AXIsProcessTrustedWithOptions((CFDictionaryRef)options);
+  //BOOL accessibilityEnabled = YES; //is accessibility even required? seems to work fine without it
+
+  if (accessibilityEnabled) {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"SBFDonated"]) {
+      self.menuMode = MenuModeNormal;
     }
     else {
-        self.menuMode = MenuModeAccessibility;
+      self.menuMode = MenuModeDonation;
     }
-    
-    // QQQ: for testing
-    //self.menuMode = arc4random_uniform(3);
+  }
+  else {
+    self.menuMode = MenuModeAccessibility;
+  }
+
+  // QQQ: for testing
+  //self.menuMode = arc4random_uniform(3);
 }
 
 -(void) refreshSettings {
-    self.statusItem.menu.itemArray[MenuItemEnabled].state = self.tap != NULL && CGEventTapIsEnabled(self.tap);
-    self.statusItem.menu.itemArray[MenuItemTriggerOnMouseDown].state = [[NSUserDefaults standardUserDefaults] boolForKey:@"SBFMouseDown"];
-    self.statusItem.menu.itemArray[MenuItemSwapButtons].state = [[NSUserDefaults standardUserDefaults] boolForKey:@"SBFSwapButtons"];
-    
-    switch (self.menuMode) {
-        case MenuModeAccessibility:
-            self.statusItem.menu.itemArray[MenuItemEnabled].enabled = NO;
-            self.statusItem.menu.itemArray[MenuItemTriggerOnMouseDown].enabled = NO;
-            self.statusItem.menu.itemArray[MenuItemSwapButtons].enabled = NO;
-            self.statusItem.menu.itemArray[MenuItemDonate].hidden = YES;
-            self.statusItem.menu.itemArray[MenuItemWebsite].hidden = NO;
-            self.statusItem.menu.itemArray[MenuItemAccessibility].hidden = NO;
-            break;
-        case MenuModeDonation:
-            self.statusItem.menu.itemArray[MenuItemEnabled].enabled = YES;
-            self.statusItem.menu.itemArray[MenuItemTriggerOnMouseDown].enabled = YES;
-            self.statusItem.menu.itemArray[MenuItemSwapButtons].enabled = YES;
-            self.statusItem.menu.itemArray[MenuItemDonate].hidden = NO;
-            self.statusItem.menu.itemArray[MenuItemWebsite].hidden = YES;
-            self.statusItem.menu.itemArray[MenuItemAccessibility].hidden = YES;
-            break;
-        case MenuModeNormal:
-            self.statusItem.menu.itemArray[MenuItemEnabled].enabled = YES;
-            self.statusItem.menu.itemArray[MenuItemTriggerOnMouseDown].enabled = YES;
-            self.statusItem.menu.itemArray[MenuItemSwapButtons].enabled = YES;
-            self.statusItem.menu.itemArray[MenuItemDonate].hidden = YES;
-            self.statusItem.menu.itemArray[MenuItemWebsite].hidden = NO;
-            self.statusItem.menu.itemArray[MenuItemAccessibility].hidden = YES;
-            break;
-    }
-    
-    AboutView* view = (AboutView*)self.statusItem.menu.itemArray[MenuItemAboutText].view;
-    [view layoutSubtreeIfNeeded]; //used to auto-calculate the text view size
-    view.frame = NSMakeRect(0, 0, view.bounds.size.width, view.text.frame.size.height);
-    
-    // only show the menu item to hide the icon if the API is available
-    if (@available(macOS 10.12, *)) {
-        self.statusItem.menu.itemArray[MenuItemStartupHide].hidden = NO;
-        self.statusItem.menu.itemArray[MenuItemStartupHideInfo].hidden = NO;
+  self.statusItem.menu.itemArray[MenuItemEnabled].state = self.tap != NULL && CGEventTapIsEnabled(self.tap);
+  self.statusItem.menu.itemArray[MenuItemTriggerOnMouseDown].state = [[NSUserDefaults standardUserDefaults] boolForKey:@"SBFMouseDown"];
+  self.statusItem.menu.itemArray[MenuItemSwapButtons].state = [[NSUserDefaults standardUserDefaults] boolForKey:@"SBFSwapButtons"];
+
+  switch (self.menuMode) {
+    case MenuModeAccessibility:
+      self.statusItem.menu.itemArray[MenuItemEnabled].enabled = NO;
+      self.statusItem.menu.itemArray[MenuItemTriggerOnMouseDown].enabled = NO;
+      self.statusItem.menu.itemArray[MenuItemSwapButtons].enabled = NO;
+      self.statusItem.menu.itemArray[MenuItemDonate].hidden = YES;
+      self.statusItem.menu.itemArray[MenuItemWebsite].hidden = NO;
+      self.statusItem.menu.itemArray[MenuItemAccessibility].hidden = NO;
+      break;
+    case MenuModeDonation:
+      self.statusItem.menu.itemArray[MenuItemEnabled].enabled = YES;
+      self.statusItem.menu.itemArray[MenuItemTriggerOnMouseDown].enabled = YES;
+      self.statusItem.menu.itemArray[MenuItemSwapButtons].enabled = YES;
+      self.statusItem.menu.itemArray[MenuItemDonate].hidden = NO;
+      self.statusItem.menu.itemArray[MenuItemWebsite].hidden = YES;
+      self.statusItem.menu.itemArray[MenuItemAccessibility].hidden = YES;
+      break;
+    case MenuModeNormal:
+      self.statusItem.menu.itemArray[MenuItemEnabled].enabled = YES;
+      self.statusItem.menu.itemArray[MenuItemTriggerOnMouseDown].enabled = YES;
+      self.statusItem.menu.itemArray[MenuItemSwapButtons].enabled = YES;
+      self.statusItem.menu.itemArray[MenuItemDonate].hidden = YES;
+      self.statusItem.menu.itemArray[MenuItemWebsite].hidden = NO;
+      self.statusItem.menu.itemArray[MenuItemAccessibility].hidden = YES;
+      break;
+  }
+
+  AboutView* view = (AboutView*)self.statusItem.menu.itemArray[MenuItemAboutText].view;
+  [view layoutSubtreeIfNeeded]; //used to auto-calculate the text view size
+  view.frame = NSMakeRect(0, 0, view.bounds.size.width, view.text.frame.size.height);
+
+  // only show the menu item to hide the icon if the API is available
+  if (@available(macOS 10.12, *)) {
+    self.statusItem.menu.itemArray[MenuItemStartupHide].hidden = NO;
+    self.statusItem.menu.itemArray[MenuItemStartupHideInfo].hidden = NO;
+  }
+  else {
+    self.statusItem.menu.itemArray[MenuItemStartupHide].hidden = YES;
+    self.statusItem.menu.itemArray[MenuItemStartupHideInfo].hidden = YES;
+  }
+
+  if (self.statusItem.button != nil) {
+    if (self.tap != NULL && CGEventTapIsEnabled(self.tap)) {
+      self.statusItem.button.image = [NSImage imageNamed:@"MenuIcon"];
     }
     else {
-        self.statusItem.menu.itemArray[MenuItemStartupHide].hidden = YES;
-        self.statusItem.menu.itemArray[MenuItemStartupHideInfo].hidden = YES;
+      self.statusItem.button.image = [NSImage imageNamed:@"MenuIconDisabled"];
     }
-    
-    if (self.statusItem.button != nil) {
-        if (self.tap != NULL && CGEventTapIsEnabled(self.tap)) {
-            self.statusItem.button.image = [NSImage imageNamed:@"MenuIcon"];
-        }
-        else {
-            self.statusItem.button.image = [NSImage imageNamed:@"MenuIconDisabled"];
-        }
-    }
+  }
 }
 
 -(void) startTap:(BOOL)start {
-    if (start) {
-        if (self.tap == NULL) {
-            self.tap = CGEventTapCreate(kCGHIDEventTap,
-                                        kCGHeadInsertEventTap,
-                                        kCGEventTapOptionDefault,
-                                        CGEventMaskBit(kCGEventOtherMouseUp)|CGEventMaskBit(kCGEventOtherMouseDown),
-                                        &SBFMouseCallback,
-                                        NULL);
-            
-            if (self.tap != NULL) {
-                CFRunLoopSourceRef runLoopSource = CFMachPortCreateRunLoopSource(NULL, self.tap, 0);
-                CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, kCFRunLoopCommonModes);
-                CFRelease(runLoopSource);
-                
-                CGEventTapEnable(self.tap, true);
-            }
-        }
+  if (start) {
+    if (self.tap == NULL) {
+      self.tap = CGEventTapCreate(kCGHIDEventTap,
+                                  kCGHeadInsertEventTap,
+                                  kCGEventTapOptionDefault,
+                                  CGEventMaskBit(kCGEventOtherMouseUp)|CGEventMaskBit(kCGEventOtherMouseDown),
+                                  &SBFMouseCallback,
+                                  NULL);
+
+      if (self.tap != NULL) {
+        CFRunLoopSourceRef runLoopSource = CFMachPortCreateRunLoopSource(NULL, self.tap, 0);
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, kCFRunLoopCommonModes);
+        CFRelease(runLoopSource);
+
+        CGEventTapEnable(self.tap, true);
+      }
     }
-    else {
-        if (self.tap != NULL) {
-            CGEventTapEnable(self.tap, NO);
-            CFRelease(self.tap);
-            
-            self.tap = NULL;
-        }
+  }
+  else {
+    if (self.tap != NULL) {
+      CGEventTapEnable(self.tap, NO);
+      CFRelease(self.tap);
+
+      self.tap = NULL;
     }
-    
-    [[NSUserDefaults standardUserDefaults] setBool:self.tap != NULL && CGEventTapIsEnabled(self.tap) forKey:@"SBFWasEnabled"];
+  }
+
+  [[NSUserDefaults standardUserDefaults] setBool:self.tap != NULL && CGEventTapIsEnabled(self.tap) forKey:@"SBFWasEnabled"];
 }
 
 -(void) enabledToggle:(id)sender {
-    [self startTap:self.tap == NULL];
-    [self refreshSettings];
+  [self startTap:self.tap == NULL];
+  [self refreshSettings];
 }
 
 -(void) mouseDownToggle:(id)sender {
-    [[NSUserDefaults standardUserDefaults] setBool:![[NSUserDefaults standardUserDefaults] boolForKey:@"SBFMouseDown"] forKey:@"SBFMouseDown"];
-    [self refreshSettings];
+  [[NSUserDefaults standardUserDefaults] setBool:![[NSUserDefaults standardUserDefaults] boolForKey:@"SBFMouseDown"] forKey:@"SBFMouseDown"];
+  [self refreshSettings];
 }
 
 -(void) swapToggle:(id)sender {
-    [[NSUserDefaults standardUserDefaults] setBool:![[NSUserDefaults standardUserDefaults] boolForKey:@"SBFSwapButtons"] forKey:@"SBFSwapButtons"];
-    [self refreshSettings];
+  [[NSUserDefaults standardUserDefaults] setBool:![[NSUserDefaults standardUserDefaults] boolForKey:@"SBFSwapButtons"] forKey:@"SBFSwapButtons"];
+  [self refreshSettings];
 }
 
 -(void) donate:(id)sender {
-    [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString: @"http://sensible-side-buttons.archagon.net#donations"]];
-    [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"SBFDonated"];
-    
-    [self updateMenuMode];
-    [self refreshSettings];
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString: @"http://sensible-side-buttons.archagon.net#donations"]];
+  [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"SBFDonated"];
+
+  [self updateMenuMode];
+  [self refreshSettings];
 }
 
 -(void) website:(id)sender {
-    [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString: @"http://sensible-side-buttons.archagon.net"]];
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString: @"http://sensible-side-buttons.archagon.net"]];
 }
 
 -(void) accessibility:(id)sender {
-    [self updateMenuMode];
-    [self refreshSettings];
+  [self updateMenuMode];
+  [self refreshSettings];
 }
 
 -(void) hideMenubarItem:(id)sender {
-    if (@available(macOS 10.12, *)) {
-        [self.statusItem setVisible:NO];
-    }
+  if (@available(macOS 10.12, *)) {
+    [self.statusItem setVisible:NO];
+  }
 }
 
 -(void) quit:(id)sender {
-    [NSApp terminate:self];
+  [NSApp terminate:self];
 }
 
 - (void) menuWillOpen:(NSMenu*)menu {
-    // TODO: theoretically, accessibility can be disabled while the menu is opened, but this is unlikely
-    [self updateMenuMode:NO];
-    [self refreshSettings];
+  // TODO: theoretically, accessibility can be disabled while the menu is opened, but this is unlikely
+  [self updateMenuMode:NO];
+  [self refreshSettings];
 }
 
 @end
@@ -399,136 +474,136 @@ typedef NS_ENUM(NSInteger, MenuItem) {
 @implementation AboutView
 
 -(CGFloat) margin {
-    return 17;
+  return 17;
 }
 
 -(void) setMenuMode:(MenuMode)menuMode {
-    _menuMode = menuMode;
-    
-    NSFont* font = [NSFont menuFontOfSize:13];
-    
-    NSFontDescriptor* boldFontDesc = [NSFontDescriptor fontDescriptorWithFontAttributes:@{
-                                                                                          NSFontFamilyAttribute: font.familyName,
-                                                                                          NSFontFaceAttribute: @"Bold"
-                                                                                          }];
-    NSFont* boldFont = [NSFont fontWithDescriptor:boldFontDesc size:font.pointSize];
-    if (!boldFont) { boldFont = font; }
-    
-    // AB: dynamic color component extraction experiments
-    //CGFloat h1, s1, b1, a1, h2, s2, b2, a2;
-    //NSColorSpace* space;
-    //if (@available(macOS 10.13, *)) {
-    //    space = [[NSColor redColor] colorUsingType:NSColorTypeComponentBased].colorSpace;
-    //} else {
-    //    space = [NSColorSpace deviceRGBColorSpace];
-    //}
-    //NSColor* color = [[NSColor systemBlueColor] colorUsingColorSpace:space];
-    //[color getHue:&h1 saturation:&s1 brightness:&b1 alpha:&a1];
-    //color = [[NSColor systemRedColor] colorUsingColorSpace:space];
-    //[color getHue:&h2 saturation:&s2 brightness:&b2 alpha:&a2];
-    
-    //NSColor* regularColor = [NSColor colorWithRed:120/255.0 green:120/255.0 blue:160/255.0 alpha:1];
-    //NSColor* regularColor = [NSColor colorWithHue:h1 saturation:s1 brightness:b1 alpha:a1];
-    NSColor* regularColor = [NSColor secondaryLabelColor];
-    NSColor* alertColor = [NSColor systemRedColor];
-    
-    NSDictionary* regularAttributes = @{
-                                 NSFontAttributeName: font,
-                                 NSForegroundColorAttributeName: regularColor
-                                 };
-    NSDictionary* alertAttributes = @{
-                                      NSFontAttributeName: font,
-                                      NSForegroundColorAttributeName: alertColor
-                                      };
-    NSDictionary* smallReturnAttributes = @{
-                                            NSFontAttributeName: [NSFont menuFontOfSize:3],
-                                            };
-    
-    NSString* appName = [[[NSBundle mainBundle] infoDictionary] objectForKey:(NSString*)kCFBundleNameKey];
-    NSString* appDescription = [NSString stringWithFormat:@"%@ %@", appName, [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleShortVersionString"]];
-    NSString* copyright = @"Copyright © 2018 Alexei Baboulevitch.";
-    
-    switch (menuMode) {
-        case MenuModeAccessibility: {
-            NSString* text = [NSString stringWithFormat:@"Uh-oh! It looks like %@ is not whitelisted in the Accessibility panel of your Security & Privacy System Preferences. This app needs to be on the Accessibility whitelist in order to process global mouse events. Please open the Accessibility panel below and add the app to the whitelist.", appDescription];
-            
-            NSMutableAttributedString* string = [[NSMutableAttributedString alloc] initWithString:text attributes:alertAttributes];
-            [string addAttribute:NSFontAttributeName value:boldFont range:[text rangeOfString:appDescription]];
-            [string appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:regularAttributes]];
-            [string appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:smallReturnAttributes]];
-            [string appendAttributedString:[[NSAttributedString alloc] initWithString:copyright attributes:regularAttributes]];
-            
-            [self.text.textStorage setAttributedString:string];
-        } break;
-        case MenuModeDonation: {
-            NSString* text = [NSString stringWithFormat:@"Thanks for using %@!\nIf you find this utility useful, please consider making a purchase through the Amazon affiliate link on the website below. It won't cost you an extra cent! 😊", appDescription];
-            
-            NSMutableAttributedString* string = [[NSMutableAttributedString alloc] initWithString:text attributes:regularAttributes];
-            [string addAttribute:NSFontAttributeName value:boldFont range:[text rangeOfString:appDescription]];
-            [string appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:regularAttributes]];
-            [string appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:smallReturnAttributes]];
-            [string appendAttributedString:[[NSAttributedString alloc] initWithString:copyright attributes:regularAttributes]];
-            
-            [self.text.textStorage setAttributedString:string];
-        } break;
-        case MenuModeNormal: {
-            NSString* text = [NSString stringWithFormat:@"Thanks for using %@!", appDescription];
-            
-            NSMutableAttributedString* string = [[NSMutableAttributedString alloc] initWithString:text attributes:regularAttributes];
-            [string addAttribute:NSFontAttributeName value:boldFont range:[text rangeOfString:appDescription]];
-            [string appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:regularAttributes]];
-            [string appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:smallReturnAttributes]];
-            [string appendAttributedString:[[NSAttributedString alloc] initWithString:copyright attributes:regularAttributes]];
-            
-            [self.text.textStorage setAttributedString:string];
-        } break;
-    }
-    
-    [self setNeedsLayout:YES];
+  _menuMode = menuMode;
+
+  NSFont* font = [NSFont menuFontOfSize:13];
+
+  NSFontDescriptor* boldFontDesc = [NSFontDescriptor fontDescriptorWithFontAttributes:@{
+    NSFontFamilyAttribute: font.familyName,
+    NSFontFaceAttribute: @"Bold"
+  }];
+  NSFont* boldFont = [NSFont fontWithDescriptor:boldFontDesc size:font.pointSize];
+  if (!boldFont) { boldFont = font; }
+
+  // AB: dynamic color component extraction experiments
+  //CGFloat h1, s1, b1, a1, h2, s2, b2, a2;
+  //NSColorSpace* space;
+  //if (@available(macOS 10.13, *)) {
+  //    space = [[NSColor redColor] colorUsingType:NSColorTypeComponentBased].colorSpace;
+  //} else {
+  //    space = [NSColorSpace deviceRGBColorSpace];
+  //}
+  //NSColor* color = [[NSColor systemBlueColor] colorUsingColorSpace:space];
+  //[color getHue:&h1 saturation:&s1 brightness:&b1 alpha:&a1];
+  //color = [[NSColor systemRedColor] colorUsingColorSpace:space];
+  //[color getHue:&h2 saturation:&s2 brightness:&b2 alpha:&a2];
+
+  //NSColor* regularColor = [NSColor colorWithRed:120/255.0 green:120/255.0 blue:160/255.0 alpha:1];
+  //NSColor* regularColor = [NSColor colorWithHue:h1 saturation:s1 brightness:b1 alpha:a1];
+  NSColor* regularColor = [NSColor secondaryLabelColor];
+  NSColor* alertColor = [NSColor systemRedColor];
+
+  NSDictionary* regularAttributes = @{
+    NSFontAttributeName: font,
+    NSForegroundColorAttributeName: regularColor
+  };
+  NSDictionary* alertAttributes = @{
+    NSFontAttributeName: font,
+    NSForegroundColorAttributeName: alertColor
+  };
+  NSDictionary* smallReturnAttributes = @{
+    NSFontAttributeName: [NSFont menuFontOfSize:3],
+  };
+
+  NSString* appName = [[[NSBundle mainBundle] infoDictionary] objectForKey:(NSString*)kCFBundleNameKey];
+  NSString* appDescription = [NSString stringWithFormat:@"%@ %@", appName, [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleShortVersionString"]];
+  NSString* copyright = @"Copyright © 2018 Alexei Baboulevitch.";
+
+  switch (menuMode) {
+    case MenuModeAccessibility: {
+      NSString* text = [NSString stringWithFormat:@"Uh-oh! It looks like %@ is not whitelisted in the Accessibility panel of your Security & Privacy System Preferences. This app needs to be on the Accessibility whitelist in order to process global mouse events. Please open the Accessibility panel below and add the app to the whitelist.", appDescription];
+
+      NSMutableAttributedString* string = [[NSMutableAttributedString alloc] initWithString:text attributes:alertAttributes];
+      [string addAttribute:NSFontAttributeName value:boldFont range:[text rangeOfString:appDescription]];
+      [string appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:regularAttributes]];
+      [string appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:smallReturnAttributes]];
+      [string appendAttributedString:[[NSAttributedString alloc] initWithString:copyright attributes:regularAttributes]];
+
+      [self.text.textStorage setAttributedString:string];
+    } break;
+    case MenuModeDonation: {
+      NSString* text = [NSString stringWithFormat:@"Thanks for using %@!\nIf you find this utility useful, please consider making a purchase through the Amazon affiliate link on the website below. It won't cost you an extra cent! 😊", appDescription];
+
+      NSMutableAttributedString* string = [[NSMutableAttributedString alloc] initWithString:text attributes:regularAttributes];
+      [string addAttribute:NSFontAttributeName value:boldFont range:[text rangeOfString:appDescription]];
+      [string appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:regularAttributes]];
+      [string appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:smallReturnAttributes]];
+      [string appendAttributedString:[[NSAttributedString alloc] initWithString:copyright attributes:regularAttributes]];
+
+      [self.text.textStorage setAttributedString:string];
+    } break;
+    case MenuModeNormal: {
+      NSString* text = [NSString stringWithFormat:@"Thanks for using %@!", appDescription];
+
+      NSMutableAttributedString* string = [[NSMutableAttributedString alloc] initWithString:text attributes:regularAttributes];
+      [string addAttribute:NSFontAttributeName value:boldFont range:[text rangeOfString:appDescription]];
+      [string appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:regularAttributes]];
+      [string appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:smallReturnAttributes]];
+      [string appendAttributedString:[[NSAttributedString alloc] initWithString:copyright attributes:regularAttributes]];
+
+      [self.text.textStorage setAttributedString:string];
+    } break;
+  }
+
+  [self setNeedsLayout:YES];
 }
 
 -(instancetype) initWithFrame:(NSRect)frameRect {
-    self = [super initWithFrame:frameRect];
-    
-    if (self) {
-        //NSTextView* testColor = [NSTextView new];
-        //testColor.backgroundColor = NSColor.greenColor;
-        //[self addSubview:testColor];
-        
-        self.text = [NSTextView new];
-        self.text.backgroundColor = NSColor.clearColor;
-        [self.text setEditable:NO];
-        [self.text setSelectable:NO];
-        [self addSubview:self.text];
-        
-        self.menuMode = MenuModeNormal;
-    }
-    
-    return self;
+  self = [super initWithFrame:frameRect];
+
+  if (self) {
+    //NSTextView* testColor = [NSTextView new];
+    //testColor.backgroundColor = NSColor.greenColor;
+    //[self addSubview:testColor];
+
+    self.text = [NSTextView new];
+    self.text.backgroundColor = NSColor.clearColor;
+    [self.text setEditable:NO];
+    [self.text setSelectable:NO];
+    [self addSubview:self.text];
+
+    self.menuMode = MenuModeNormal;
+  }
+
+  return self;
 }
 
 -(void) layout {
-    [super layout];
-    
-    CGFloat margin = [self margin];
-    
-    // text view sizing
-    {
-        // first, set the correct width
-        CGFloat arbitraryHeight = 100;
-        self.text.frame = NSMakeRect(margin, 0, self.bounds.size.width - margin, arbitraryHeight);
-        
-        // next, autosize to get the height
-        [self.text sizeToFit];
-        
-        // finally, position the view correctly
-        self.text.frame = NSMakeRect(self.text.frame.origin.x, self.bounds.size.height - self.text.frame.size.height, self.text.frame.size.width, self.text.frame.size.height);
-    }
-    
-    //NSView* testView = [self subviews][0];
-    //testView.frame = self.bounds;
-    
-    //NSLog(@"Text size: %@, self size: %@", NSStringFromSize(self.text.frame.size), NSStringFromSize(self.bounds.size));
+  [super layout];
+
+  CGFloat margin = [self margin];
+
+  // text view sizing
+  {
+    // first, set the correct width
+    CGFloat arbitraryHeight = 100;
+    self.text.frame = NSMakeRect(margin, 0, self.bounds.size.width - margin, arbitraryHeight);
+
+    // next, autosize to get the height
+    [self.text sizeToFit];
+
+    // finally, position the view correctly
+    self.text.frame = NSMakeRect(self.text.frame.origin.x, self.bounds.size.height - self.text.frame.size.height, self.text.frame.size.width, self.text.frame.size.height);
+  }
+
+  //NSView* testView = [self subviews][0];
+  //testView.frame = self.bounds;
+
+  //NSLog(@"Text size: %@, self size: %@", NSStringFromSize(self.text.frame.size), NSStringFromSize(self.bounds.size));
 }
 
 @end
