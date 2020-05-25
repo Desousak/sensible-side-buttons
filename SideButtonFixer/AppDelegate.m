@@ -21,16 +21,12 @@
 
 #import "AppDelegate.h"
 #import "TouchEvents.h"
-
-@import Quartz;
-@import CoreGraphics;
-
+// MARK: Constants
+static NSArray<NSString*>* ignored_application_bundle_ids;
 static NSMutableDictionary<NSNumber*, NSArray<NSDictionary*>*>* swipeInfo = nil;
 static NSArray* nullArray = nil;
 
 
-// MARK: Constants
-static NSString* const vs_code_app_name = @"Code";
 
 static void SBFFakeSwipe(TLInfoSwipeDirection dir) {
   CGEventRef event1 = tl_CGEventCreateFromGesture((__bridge CFDictionaryRef)(swipeInfo[@(dir)][0]), (__bridge CFArrayRef)nullArray);
@@ -43,71 +39,26 @@ static void SBFFakeSwipe(TLInfoSwipeDirection dir) {
   CFRelease(event2);
 }
 
+static BOOL is_valid_application(void) {
+  NSString* front_app_bundleID = [[[NSWorkspace sharedWorkspace] frontmostApplication] bundleIdentifier];
 
+  if (!front_app_bundleID) {
+    return YES;
+  }
 
-static BOOL was_mouse_down_inside_vscode(CGPoint mouse_pos)
-{
-  // NOTE(@bojanin): screenPoint is the location of the mouse point (0,0) is BOTTOM LEFT
-
-  CFArrayRef cgwindows_ = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
-
-  for (CFIndex i = 0; i < CFArrayGetCount(cgwindows_); i++) {
-    /** NOTE(@bojanin): This is what a cgwindows_ array entry looks like
-     {
-     kCGWindowAlpha = 1;
-     kCGWindowBounds =     {
-       Height = 1057;
-       Width = 1920;
-       X = 0;
-       Y = 23;
-     };
-     kCGWindowIsOnscreen = 1;
-     kCGWindowLayer = 0;
-     kCGWindowMemoryUsage = 1152;
-     kCGWindowNumber = 903;
-     kCGWindowOwnerName = Code; <-------- INDICATES VSCODE APP
-     kCGWindowOwnerPID = 1408;
-     kCGWindowSharingState = 0;
-     kCGWindowStoreType = 1;
-     },
-
-     */
-
-    NSDictionary *windowInfoDictionary = (__bridge NSDictionary *)((CFDictionaryRef)CFArrayGetValueAtIndex(cgwindows_, i));
-    NSString* appName = windowInfoDictionary[(id)kCGWindowOwnerName];
-    if ([appName isEqualToString:vs_code_app_name]) {
-      NSDictionary* windowLocationInfo = windowInfoDictionary[(id)kCGWindowBounds];
-
-      // NOTE(bojanin): window frame start location (0,0) is TOP LEFT of the screen
-      int window_y = [ (NSNumber*)windowLocationInfo[@"Y"] intValue];
-      int window_x = [ (NSNumber*)windowLocationInfo[@"X"] intValue];
-
-      int window_height = [ (NSNumber*)windowLocationInfo[@"Height"] intValue];
-      int window_width = [ (NSNumber*)windowLocationInfo[@"Width"] intValue];
-
-      //NOTE(@bojanin): upper bounds for window location, since only start frame x,y + height,width are given
-      int window_upper_x_bound = window_x + window_width;
-      int window_upper_y_bound = window_y + window_height;
-
-      // NOTE(@bojanin): check if mouse down was inside vscode window location
-
-      if(mouse_pos.x < window_upper_x_bound && mouse_pos.x > window_x &&
-         mouse_pos.y < window_upper_y_bound && mouse_pos.x > window_y) {
-        return YES;
-      }
-
+  for (NSString* bundleID in ignored_application_bundle_ids) {
+    if ([bundleID isEqualToString:front_app_bundleID]) {
+      return NO;
     }
   }
 
-  CFRelease(cgwindows_);
-
-  return NO;
+  return YES;
 }
 
 static CGEventRef SBFMouseCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *refcon) {
   // NOTE(bojanin): VSCode doesnt support sensibleSideButtons, but without sensible side buttons, pressing the side buttons works.
   // This basically checks if the mouse side button press happened inside VSCode, if so it returns the original CGEventRef.
-  if (was_mouse_down_inside_vscode([NSEvent mouseLocation])) {
+  if (!is_valid_application()) {
     return event;
   }
 
@@ -205,102 +156,100 @@ typedef NS_ENUM(NSInteger, MenuItem) {
     @"SBFSwapButtons": @NO
   }];
 
-  // setup globals
-  {
-    swipeInfo = [NSMutableDictionary dictionary];
+  // MARK: - setup globals
 
-    for (NSNumber* direction in @[ @(kTLInfoSwipeUp), @(kTLInfoSwipeDown), @(kTLInfoSwipeLeft), @(kTLInfoSwipeRight) ]) {
-      NSDictionary* swipeInfo1 = [NSDictionary dictionaryWithObjectsAndKeys:
-                                  @(kTLInfoSubtypeSwipe), kTLInfoKeyGestureSubtype,
-                                  @(1), kTLInfoKeyGesturePhase,
-                                  nil];
+  ignored_application_bundle_ids = [NSArray arrayWithObject: @"com.microsoft.VSCode"];
 
-      NSDictionary* swipeInfo2 = [NSDictionary dictionaryWithObjectsAndKeys:
-                                  @(kTLInfoSubtypeSwipe), kTLInfoKeyGestureSubtype,
-                                  direction, kTLInfoKeySwipeDirection,
-                                  @(4), kTLInfoKeyGesturePhase,
-                                  nil];
 
-      swipeInfo[direction] = @[ swipeInfo1, swipeInfo2 ];
-    }
+  swipeInfo = [NSMutableDictionary dictionary];
 
-    nullArray = @[];
+  for (NSNumber* direction in @[ @(kTLInfoSwipeUp), @(kTLInfoSwipeDown), @(kTLInfoSwipeLeft), @(kTLInfoSwipeRight) ]) {
+    NSDictionary* swipeInfo1 = [NSDictionary dictionaryWithObjectsAndKeys:
+                                @(kTLInfoSubtypeSwipe), kTLInfoKeyGestureSubtype,
+                                @(1), kTLInfoKeyGesturePhase,
+                                nil];
+
+    NSDictionary* swipeInfo2 = [NSDictionary dictionaryWithObjectsAndKeys:
+                                @(kTLInfoSubtypeSwipe), kTLInfoKeyGestureSubtype,
+                                direction, kTLInfoKeySwipeDirection,
+                                @(4), kTLInfoKeyGesturePhase,
+                                nil];
+
+    swipeInfo[direction] = @[ swipeInfo1, swipeInfo2 ];
   }
+
+  nullArray = @[];
 
   // create status bar item
-  {
-    self.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
-  }
+  self.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
 
-  // create menu
-  {
-    NSMenu* menu = [NSMenu new];
+  // MARK: -  create menu
+  NSMenu* menu = [NSMenu new];
 
-    menu.autoenablesItems = NO;
-    menu.delegate = self;
+  menu.autoenablesItems = NO;
+  menu.delegate = self;
 
-    NSMenuItem* enabledItem = [[NSMenuItem alloc] initWithTitle:@"Enabled" action:@selector(enabledToggle:) keyEquivalent:@"e"];
-    [menu addItem:enabledItem];
-    assert(menu.itemArray.count - 1 == MenuItemEnabled);
+  NSMenuItem* enabledItem = [[NSMenuItem alloc] initWithTitle:@"Enabled" action:@selector(enabledToggle:) keyEquivalent:@"e"];
+  [menu addItem:enabledItem];
+  assert(menu.itemArray.count - 1 == MenuItemEnabled);
 
-    [menu addItem:[NSMenuItem separatorItem]];
-    assert(menu.itemArray.count - 1 == MenuItemEnabledSeparator);
+  [menu addItem:[NSMenuItem separatorItem]];
+  assert(menu.itemArray.count - 1 == MenuItemEnabledSeparator);
 
-    NSMenuItem* modeItem = [[NSMenuItem alloc] initWithTitle:@"Trigger on Mouse Down" action:@selector(mouseDownToggle:) keyEquivalent:@""];
-    modeItem.state = NSControlStateValueOn;
-    [menu addItem:modeItem];
-    assert(menu.itemArray.count - 1 == MenuItemTriggerOnMouseDown);
+  NSMenuItem* modeItem = [[NSMenuItem alloc] initWithTitle:@"Trigger on Mouse Down" action:@selector(mouseDownToggle:) keyEquivalent:@""];
+  modeItem.state = NSControlStateValueOn;
+  [menu addItem:modeItem];
+  assert(menu.itemArray.count - 1 == MenuItemTriggerOnMouseDown);
 
-    NSMenuItem* swapItem = [[NSMenuItem alloc] initWithTitle:@"Swap Buttons" action:@selector(swapToggle:) keyEquivalent:@""];
-    swapItem.state = NSControlStateValueOff;
-    [menu addItem:swapItem];
-    assert(menu.itemArray.count - 1 == MenuItemSwapButtons);
+  NSMenuItem* swapItem = [[NSMenuItem alloc] initWithTitle:@"Swap Buttons" action:@selector(swapToggle:) keyEquivalent:@""];
+  swapItem.state = NSControlStateValueOff;
+  [menu addItem:swapItem];
+  assert(menu.itemArray.count - 1 == MenuItemSwapButtons);
 
-    [menu addItem:[NSMenuItem separatorItem]];
-    assert(menu.itemArray.count - 1 == MenuItemOptionsSeparator);
+  [menu addItem:[NSMenuItem separatorItem]];
+  assert(menu.itemArray.count - 1 == MenuItemOptionsSeparator);
 
 
-    NSMenuItem* hideItem = [[NSMenuItem alloc] initWithTitle:@"Hide Menu Bar Icon" action:@selector(hideMenubarItem:) keyEquivalent:@""];
-    [menu addItem:hideItem];
-    assert(menu.itemArray.count - 1 == MenuItemStartupHide);
+  NSMenuItem* hideItem = [[NSMenuItem alloc] initWithTitle:@"Hide Menu Bar Icon" action:@selector(hideMenubarItem:) keyEquivalent:@""];
+  [menu addItem:hideItem];
+  assert(menu.itemArray.count - 1 == MenuItemStartupHide);
 
-    NSMenuItem* hideInfoItem = [[NSMenuItem alloc] initWithTitle:@"Relaunch application to show again" action:NULL keyEquivalent:@""];
-    [hideInfoItem setEnabled:NO];
-    [menu addItem:hideInfoItem];
-    assert(menu.itemArray.count - 1 == MenuItemStartupHideInfo);
+  NSMenuItem* hideInfoItem = [[NSMenuItem alloc] initWithTitle:@"Relaunch application to show again" action:NULL keyEquivalent:@""];
+  [hideInfoItem setEnabled:NO];
+  [menu addItem:hideInfoItem];
+  assert(menu.itemArray.count - 1 == MenuItemStartupHideInfo);
 
-    [menu addItem:[NSMenuItem separatorItem]];
-    assert(menu.itemArray.count - 1 == MenuItemStartupSeparator);
+  [menu addItem:[NSMenuItem separatorItem]];
+  assert(menu.itemArray.count - 1 == MenuItemStartupSeparator);
 
-    AboutView* text = [[AboutView alloc] initWithFrame:NSMakeRect(0, 0, 320, 100)]; //arbitrary height
-    NSMenuItem* aboutText = [[NSMenuItem alloc] initWithTitle:@"Text" action:NULL keyEquivalent:@""];
-    aboutText.view = text;
-    [menu addItem:aboutText];
-    assert(menu.itemArray.count - 1 == MenuItemAboutText);
+  AboutView* text = [[AboutView alloc] initWithFrame:NSMakeRect(0, 0, 320, 100)]; //arbitrary height
+  NSMenuItem* aboutText = [[NSMenuItem alloc] initWithTitle:@"Text" action:NULL keyEquivalent:@""];
+  aboutText.view = text;
+  [menu addItem:aboutText];
+  assert(menu.itemArray.count - 1 == MenuItemAboutText);
 
-    [menu addItem:[NSMenuItem separatorItem]];
-    assert(menu.itemArray.count - 1 == MenuItemAboutSeparator);
+  [menu addItem:[NSMenuItem separatorItem]];
+  assert(menu.itemArray.count - 1 == MenuItemAboutSeparator);
 
-    NSString* appName = [[[NSBundle mainBundle] infoDictionary] objectForKey:(NSString*)kCFBundleNameKey];
-    [menu addItem:[[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"%@ Website", appName] action:@selector(donate:) keyEquivalent:@""]];
-    assert(menu.itemArray.count - 1 == MenuItemDonate);
+  NSString* appName = [[[NSBundle mainBundle] infoDictionary] objectForKey:(NSString*)kCFBundleNameKey];
+  [menu addItem:[[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"%@ Website", appName] action:@selector(donate:) keyEquivalent:@""]];
+  assert(menu.itemArray.count - 1 == MenuItemDonate);
 
-    [menu addItem:[[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"%@ Website", appName] action:@selector(website:) keyEquivalent:@""]];
-    assert(menu.itemArray.count - 1 == MenuItemWebsite);
+  [menu addItem:[[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"%@ Website", appName] action:@selector(website:) keyEquivalent:@""]];
+  assert(menu.itemArray.count - 1 == MenuItemWebsite);
 
-    [menu addItem:[[NSMenuItem alloc] initWithTitle:@"Open Accessibility Whitelist" action:@selector(accessibility:) keyEquivalent:@""]];
-    assert(menu.itemArray.count - 1 == MenuItemAccessibility);
+  [menu addItem:[[NSMenuItem alloc] initWithTitle:@"Open Accessibility Whitelist" action:@selector(accessibility:) keyEquivalent:@""]];
+  assert(menu.itemArray.count - 1 == MenuItemAccessibility);
 
-    [menu addItem:[NSMenuItem separatorItem]];
-    assert(menu.itemArray.count - 1 == MenuItemLinkSeparator);
+  [menu addItem:[NSMenuItem separatorItem]];
+  assert(menu.itemArray.count - 1 == MenuItemLinkSeparator);
 
-    NSMenuItem* quit = [[NSMenuItem alloc] initWithTitle:@"Quit" action:@selector(quit:) keyEquivalent:@"q"];
-    quit.keyEquivalentModifierMask = NSEventModifierFlagCommand;
-    [menu addItem:quit];
-    assert(menu.itemArray.count - 1 == MenuItemQuit);
+  NSMenuItem* quit = [[NSMenuItem alloc] initWithTitle:@"Quit" action:@selector(quit:) keyEquivalent:@"q"];
+  quit.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+  [menu addItem:quit];
+  assert(menu.itemArray.count - 1 == MenuItemQuit);
 
-    self.statusItem.menu = menu;
-  }
+  self.statusItem.menu = menu;
 
   [self startTap:[[NSUserDefaults standardUserDefaults] boolForKey:@"SBFWasEnabled"]];
 
