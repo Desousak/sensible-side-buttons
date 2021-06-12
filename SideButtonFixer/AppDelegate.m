@@ -22,7 +22,7 @@
 #import "AppDelegate.h"
 #import "TouchEvents.h"
 // MARK: Constants
-static NSArray<NSString*>* ignored_application_bundle_ids;
+static NSMutableArray<NSString*>* ignored_application_bundle_ids;
 static NSMutableDictionary<NSNumber*, NSArray<NSDictionary*>*>* swipeInfo = nil;
 static NSArray* nullArray = nil;
 
@@ -100,6 +100,9 @@ typedef NS_ENUM(NSInteger, MenuItem) {
   MenuItemTriggerOnMouseDown,
   MenuItemSwapButtons,
   MenuItemOptionsSeparator,
+  MenuItemBlockApp,
+  MenuItemEnableApp,
+  MenuItemAppDisableSeparator,
   MenuItemStartupHide,
   MenuItemStartupHideInfo,
   MenuItemStartupSeparator,
@@ -158,8 +161,7 @@ typedef NS_ENUM(NSInteger, MenuItem) {
 
   // MARK: - setup globals
 
-//  ignored_application_bundle_ids = [NSArray arrayWithObject: @"com.microsoft.VSCode"];
-    ignored_application_bundle_ids = [NSArray arrayWithObjects: @"com.microsoft.VSCode", @"com.google.Chrome", nil];
+  ignored_application_bundle_ids = [NSMutableArray arrayWithObjects: @"com.microsoft.VSCode", @"com.google.Chrome", nil];
 
 
   swipeInfo = [NSMutableDictionary dictionary];
@@ -209,7 +211,21 @@ typedef NS_ENUM(NSInteger, MenuItem) {
 
   [menu addItem:[NSMenuItem separatorItem]];
   assert(menu.itemArray.count - 1 == MenuItemOptionsSeparator);
-
+    
+  /* START OF PER-APP DISABLER MENU ITEMS */
+    
+  NSMenuItem* blockAppItem = [[NSMenuItem alloc] initWithTitle:@"Block sidebuttons on this app" action:@selector(blockSideButtonsInApp:) keyEquivalent:@""];
+  [menu addItem:blockAppItem];
+  assert(menu.itemArray.count - 1 == MenuItemBlockApp);
+    
+  NSMenuItem* EnableAppItem = [[NSMenuItem alloc] initWithTitle:@"Enable sidebuttons on this app" action:@selector(enableSideButtonsInApp:) keyEquivalent:@""];
+  [menu addItem:EnableAppItem];
+  assert(menu.itemArray.count - 1 == MenuItemEnableApp);
+    
+  [menu addItem:[NSMenuItem separatorItem]];
+  assert(menu.itemArray.count - 1 == MenuItemAppDisableSeparator);
+    
+  /* END OF PER-APP DISABLER MENU ITEMS */
 
   NSMenuItem* hideItem = [[NSMenuItem alloc] initWithTitle:@"Hide Menu Bar Icon" action:@selector(hideMenubarItem:) keyEquivalent:@""];
   [menu addItem:hideItem];
@@ -401,6 +417,61 @@ typedef NS_ENUM(NSInteger, MenuItem) {
 -(void) accessibility:(id)sender {
   [self updateMenuMode];
   [self refreshSettings];
+}
+
+-(NSString*) getTopWindow {
+    // Get all windows on screen
+    NSArray *windows = (__bridge NSArray*) CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+    NSUInteger count = [windows count];
+    
+    for (NSUInteger i = 0; i < count; i++) {
+        NSDictionary* windowDict = [windows objectAtIndex:i];
+        NSNumber* windowLayer = (NSNumber*)[windowDict objectForKey:@"kCGWindowLayer"];
+        NSString* windowName = (NSString*)[windowDict objectForKey:@"kCGWindowOwnerName"];
+        
+        // Only if the window represents a currently active app (windowLayer = 0)
+        if (windowLayer && windowName && [windowLayer intValue]  == 0) {
+//            NSLog(@"%@", windowName);
+            return windowName;
+        }
+    }
+    return nil;
+}
+
+-(NSString*) bundleIDFromAppName:(NSString*) appName {
+    NSWorkspace* workspace = [NSWorkspace sharedWorkspace];
+    NSString* appPath = [workspace fullPathForApplication:appName];
+    if (appPath) {
+        NSBundle* appBundle = [NSBundle bundleWithPath:appPath];
+        return [appBundle bundleIdentifier];
+    }
+    return nil;
+}
+
+// Add the current most active application to the blocklist
+-(void) blockSideButtonsInApp:(id)sender {
+    NSString* topWindowAppName = [self getTopWindow];
+    NSString* topWindowBundleID = [self bundleIDFromAppName:topWindowAppName];
+    if (![ignored_application_bundle_ids containsObject:topWindowBundleID]) {
+        [ignored_application_bundle_ids addObject:topWindowBundleID];
+//        NSLog(@"%@", ignored_application_bundle_ids);
+    }
+    
+}
+
+// Remove the current most active application from the blocklist
+-(void) enableSideButtonsInApp:(id)sender {
+    NSString* topWindowAppName = [self getTopWindow];
+    NSString* topWindowBundleID = [self bundleIDFromAppName:topWindowAppName];
+    if ([ignored_application_bundle_ids containsObject:topWindowBundleID]) {
+        [ignored_application_bundle_ids removeObject:topWindowBundleID];
+//        NSLog(@"%@", ignored_application_bundle_ids);
+    }
+    
+}
+
+-(void) testItemInteraction:(id)sender {
+    printf("Clicked!");
 }
 
 -(void) hideMenubarItem:(id)sender {
