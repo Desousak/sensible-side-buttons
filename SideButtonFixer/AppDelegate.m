@@ -102,6 +102,7 @@ typedef NS_ENUM(NSInteger, MenuItem) {
   MenuItemOptionsSeparator,
   MenuItemBlockApp,
   MenuItemEnableApp,
+  MenuItemEditBlocklist,
   MenuItemAppDisableSeparator,
   MenuItemStartupHide,
   MenuItemStartupHideInfo,
@@ -219,6 +220,10 @@ typedef NS_ENUM(NSInteger, MenuItem) {
   NSMenuItem* EnableAppItem = [[NSMenuItem alloc] initWithTitle:@"Allow sidebutton use in this app" action:@selector(allowSideButtonsInApp:) keyEquivalent:@""];
   [menu addItem:EnableAppItem];
   assert(menu.itemArray.count - 1 == MenuItemEnableApp);
+    
+  NSMenuItem* editBlocklistItem = [[NSMenuItem alloc] initWithTitle:@"Edit app blocklist" action:@selector(editSideButtonBlocklist:) keyEquivalent:@""];
+  [menu addItem:editBlocklistItem];
+  assert(menu.itemArray.count - 1 == MenuItemEditBlocklist);
     
   [menu addItem:[NSMenuItem separatorItem]];
   assert(menu.itemArray.count - 1 == MenuItemAppDisableSeparator);
@@ -445,6 +450,14 @@ typedef NS_ENUM(NSInteger, MenuItem) {
     return nil;
 }
 
+-(void) editSideButtonBlocklist:(id)sender {
+    NSLog(@"Hello!");
+    if (!_editBLWindowController) {
+        _editBLWindowController = [[EditBLWindowController alloc] initWithWindowNibName:@"EditBLWindowController"];
+    }
+    [_editBLWindowController showWindow:self];
+}
+
 // Add the current most active application to the blocklist
 -(void) blockSideButtonsInApp:(id)sender {
     NSString* topWindowAppName = [self getTopWindow];
@@ -453,7 +466,6 @@ typedef NS_ENUM(NSInteger, MenuItem) {
         [ignored_application_bundle_ids addObject:topWindowBundleID];
         [self updateStoredBlocklist];
     }
-    
 }
 
 // Remove the current most active application from the blocklist
@@ -464,7 +476,6 @@ typedef NS_ENUM(NSInteger, MenuItem) {
         [ignored_application_bundle_ids removeObject:topWindowBundleID];
         [self updateStoredBlocklist];
     }
-    
 }
 
 // Get the blocklist from the UserDefaults object

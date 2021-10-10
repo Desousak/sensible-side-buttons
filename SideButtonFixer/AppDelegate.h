@@ -20,6 +20,9 @@
 //
 
 #import <Cocoa/Cocoa.h>
+#import "EditBLWindowController.h"
 
 @interface AppDelegate : NSObject <NSApplicationDelegate>
+@property EditBLWindowController *editBLWindowController;
+
 @end
