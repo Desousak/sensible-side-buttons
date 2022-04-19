@@ -21,11 +21,14 @@
 
 #import "AppDelegate.h"
 #import "TouchEvents.h"
+#define kBlockMenuTag 1
+
 // MARK: Constants
 static NSMutableArray<NSString*>* ignored_application_bundle_ids;
 static NSMutableDictionary<NSNumber*, NSArray<NSDictionary*>*>* swipeInfo = nil;
 static NSArray* nullArray = nil;
-
+static NSString* blockText = @"Block sidebutton use in this app";
+static NSString* unBlockText = @"Allow sidebutton use in this app";
 
 
 static void SBFFakeSwipe(TLInfoSwipeDirection dir) {
@@ -101,8 +104,6 @@ typedef NS_ENUM(NSInteger, MenuItem) {
   MenuItemSwapButtons,
   MenuItemOptionsSeparator,
   MenuItemBlockApp,
-  MenuItemEnableApp,
-  MenuItemEditBlocklist,
   MenuItemAppDisableSeparator,
   MenuItemStartupHide,
   MenuItemStartupHideInfo,
@@ -214,16 +215,9 @@ typedef NS_ENUM(NSInteger, MenuItem) {
   /* START OF PER-APP DISABLER MENU ITEMS */
     
   NSMenuItem* blockAppItem = [[NSMenuItem alloc] initWithTitle:@"Block sidebutton use in this app" action:@selector(blockSideButtonsInApp:) keyEquivalent:@""];
+  blockAppItem.tag = kBlockMenuTag;
   [menu addItem:blockAppItem];
   assert(menu.itemArray.count - 1 == MenuItemBlockApp);
-    
-  NSMenuItem* EnableAppItem = [[NSMenuItem alloc] initWithTitle:@"Allow sidebutton use in this app" action:@selector(allowSideButtonsInApp:) keyEquivalent:@""];
-  [menu addItem:EnableAppItem];
-  assert(menu.itemArray.count - 1 == MenuItemEnableApp);
-    
-  NSMenuItem* editBlocklistItem = [[NSMenuItem alloc] initWithTitle:@"Edit app blocklist" action:@selector(editSideButtonBlocklist:) keyEquivalent:@""];
-  [menu addItem:editBlocklistItem];
-  assert(menu.itemArray.count - 1 == MenuItemEditBlocklist);
     
   [menu addItem:[NSMenuItem separatorItem]];
   assert(menu.itemArray.count - 1 == MenuItemAppDisableSeparator);
@@ -422,6 +416,26 @@ typedef NS_ENUM(NSInteger, MenuItem) {
   [self refreshSettings];
 }
 
+-(void) updateMenuBlockOption {
+    // Update the text in the menu bar between "block" and "unblock" respectively 
+    // TODO: The window bundle id is obtained twice, here and in the blocking function. Rewrite so that it's passed in instead 
+    NSString* topWindowAppName = [self getTopWindow];
+    NSString* topWindowBundleID = [self bundleIDFromAppName:topWindowAppName];
+    
+    // Update the button's title and action
+    NSMenuItem* blockAppItem = [self.statusItem.menu itemWithTag:kBlockMenuTag];
+    
+    if ([ignored_application_bundle_ids containsObject:topWindowBundleID]) {
+      // Remove from blocklist
+      [blockAppItem setTitle:unBlockText];
+      [blockAppItem setAction:@selector(allowSideButtonsInApp:)];
+    } else {
+      // Add to blocklist
+      [blockAppItem setTitle:blockText];
+      [blockAppItem setAction:@selector(blockSideButtonsInApp:)];
+    }
+}
+
 -(NSString*) getTopWindow {
     // Get all windows on screen
     NSArray *windows = (__bridge NSArray*) CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
@@ -450,16 +464,8 @@ typedef NS_ENUM(NSInteger, MenuItem) {
     return nil;
 }
 
--(void) editSideButtonBlocklist:(id)sender {
-    NSLog(@"Hello!");
-    if (!_editBLWindowController) {
-        _editBLWindowController = [[EditBLWindowController alloc] initWithWindowNibName:@"EditBLWindowController"];
-    }
-    [_editBLWindowController showWindow:self];
-}
-
-// Add the current most active application to the blocklist
 -(void) blockSideButtonsInApp:(id)sender {
+    // Add the current most active application to the blocklist
     NSString* topWindowAppName = [self getTopWindow];
     NSString* topWindowBundleID = [self bundleIDFromAppName:topWindowAppName];
     if (![ignored_application_bundle_ids containsObject:topWindowBundleID]) {
@@ -468,8 +474,8 @@ typedef NS_ENUM(NSInteger, MenuItem) {
     }
 }
 
-// Remove the current most active application from the blocklist
 -(void) allowSideButtonsInApp:(id)sender {
+    // Remove the current most active application from the blocklist
     NSString* topWindowAppName = [self getTopWindow];
     NSString* topWindowBundleID = [self bundleIDFromAppName:topWindowAppName];
     if ([ignored_application_bundle_ids containsObject:topWindowBundleID]) {
@@ -478,8 +484,8 @@ typedef NS_ENUM(NSInteger, MenuItem) {
     }
 }
 
-// Get the blocklist from the UserDefaults object
 -(NSMutableArray*) getBlocklist {
+    // Get the blocklist from the UserDefaults object
     NSUserDefaults* userDefaults = [NSUserDefaults standardUserDefaults];
     NSMutableArray* ignoredBundleIds = [userDefaults objectForKey:@"blockedBundleIds"];
     
@@ -491,8 +497,8 @@ typedef NS_ENUM(NSInteger, MenuItem) {
     return [NSMutableArray arrayWithArray:ignoredBundleIds];
 }
 
-// Update the UserDefaults blocklist
 -(void) updateStoredBlocklist {
+    // Update the UserDefaults blocklist
     NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
     [userDefaults setObject:ignored_application_bundle_ids forKey:@"blockedBundleIds"];
     [userDefaults synchronize];
@@ -512,6 +518,9 @@ typedef NS_ENUM(NSInteger, MenuItem) {
   // TODO: theoretically, accessibility can be disabled while the menu is opened, but this is unlikely
   [self updateMenuMode:NO];
   [self refreshSettings];
+  // Update the blocking option when the menu opens up
+  [self updateMenuBlockOption];
+    
 }
 
 @end

@@ -7,8 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0AE978C527129AC900CD44E1 /* EditBLWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 0AE978C327129AC900CD44E1 /* EditBLWindowController.m */; };
-		0AE978C627129AC900CD44E1 /* EditBLWindowController.xib in Resources */ = {isa = PBXBuildFile; fileRef = 0AE978C427129AC900CD44E1 /* EditBLWindowController.xib */; };
+		0A08042727DBFAE1001AE740 /* AViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 0A08042627DBFAE1001AE740 /* AViewController.m */; };
+		0AFD84CE2717C9B90087AD91 /* TableViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 0AFD84CD2717C9B90087AD91 /* TableViewController.m */; };
 		4E9995151EE7172700A1CFA6 /* TouchEvents.c in Sources */ = {isa = PBXBuildFile; fileRef = 4ECC16A21EE54D870062AC72 /* TouchEvents.c */; };
 		4EC7C3B91EE711B400C9F725 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 4EC7C3B81EE711B400C9F725 /* AppDelegate.m */; };
 		4EC7C3BE1EE711B400C9F725 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4EC7C3BD1EE711B400C9F725 /* Assets.xcassets */; };
@@ -42,9 +42,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		0AE978C227129AC900CD44E1 /* EditBLWindowController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EditBLWindowController.h; sourceTree = "<group>"; };
-		0AE978C327129AC900CD44E1 /* EditBLWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = EditBLWindowController.m; sourceTree = "<group>"; };
-		0AE978C427129AC900CD44E1 /* EditBLWindowController.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = EditBLWindowController.xib; sourceTree = "<group>"; };
+		0A08042627DBFAE1001AE740 /* AViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AViewController.m; sourceTree = "<group>"; };
+		0A08042827DBFAF8001AE740 /* AViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AViewController.h; sourceTree = "<group>"; };
+		0AFD84CC2717C9B90087AD91 /* TableViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TableViewController.h; sourceTree = "<group>"; };
+		0AFD84CD2717C9B90087AD91 /* TableViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TableViewController.m; sourceTree = "<group>"; };
 		4EC7C3B51EE711B400C9F725 /* SensibleSideButtons.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SensibleSideButtons.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4EC7C3B71EE711B400C9F725 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		4EC7C3B81EE711B400C9F725 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
@@ -97,9 +98,10 @@
 				4EC7C3C31EE711B400C9F725 /* main.m */,
 				4EF1B39F1EE71D690075438A /* Main.storyboard */,
 				4EC7C3C51EE711B400C9F725 /* SideButtonFixer.entitlements */,
-				0AE978C227129AC900CD44E1 /* EditBLWindowController.h */,
-				0AE978C327129AC900CD44E1 /* EditBLWindowController.m */,
-				0AE978C427129AC900CD44E1 /* EditBLWindowController.xib */,
+				0A08042627DBFAE1001AE740 /* AViewController.m */,
+				0A08042827DBFAF8001AE740 /* AViewController.h */,
+				0AFD84CC2717C9B90087AD91 /* TableViewController.h */,
+				0AFD84CD2717C9B90087AD91 /* TableViewController.m */,
 			);
 			path = SideButtonFixer;
 			sourceTree = "<group>";
@@ -249,7 +251,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0AE978C627129AC900CD44E1 /* EditBLWindowController.xib in Resources */,
 				4EC7C3BE1EE711B400C9F725 /* Assets.xcassets in Resources */,
 				4EF1B3A31EE71DC40075438A /* Main.storyboard in Resources */,
 			);
@@ -262,10 +263,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0A08042727DBFAE1001AE740 /* AViewController.m in Sources */,
 				4EC7C3C41EE711B400C9F725 /* main.m in Sources */,
 				4E9995151EE7172700A1CFA6 /* TouchEvents.c in Sources */,
 				4EC7C3B91EE711B400C9F725 /* AppDelegate.m in Sources */,
-				0AE978C527129AC900CD44E1 /* EditBLWindowController.m in Sources */,
+				0AFD84CE2717C9B90087AD91 /* TableViewController.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -340,7 +342,7 @@
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = SBS8JY59L3;
