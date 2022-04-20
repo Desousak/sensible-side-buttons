@@ -1,4 +1,4 @@
-//
+    //
 //  AppDelegate.m
 //
 // SensibleSideButtons, a utility that fixes the navigation buttons on third-party mice in macOS
@@ -418,9 +418,8 @@ typedef NS_ENUM(NSInteger, MenuItem) {
 
 -(void) updateMenuBlockOption {
     // Update the text in the menu bar between "block" and "unblock" respectively 
-    // TODO: The window bundle id is obtained twice, here and in the blocking function. Rewrite so that it's passed in instead 
-    NSString* topWindowAppName = [self getTopWindow];
-    NSString* topWindowBundleID = [self bundleIDFromAppName:topWindowAppName];
+    // TODO: The window bundle id is obtained twice, here and in the blocking function. Rewrite so that it's passed in instead
+    NSString* topWindowBundleID = [self getTopWindowBundleID];
     
     // Update the button's title and action
     NSMenuItem* blockAppItem = [self.statusItem.menu itemWithTag:kBlockMenuTag];
@@ -436,7 +435,7 @@ typedef NS_ENUM(NSInteger, MenuItem) {
     }
 }
 
--(NSString*) getTopWindow {
+-(NSString*) getTopWindowBundleID {
     // Get all windows on screen
     NSArray *windows = (__bridge NSArray*) CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
     NSUInteger count = [windows count];
@@ -444,30 +443,23 @@ typedef NS_ENUM(NSInteger, MenuItem) {
     for (NSUInteger i = 0; i < count; i++) {
         NSDictionary* windowDict = [windows objectAtIndex:i];
         NSNumber* windowLayer = (NSNumber*)[windowDict objectForKey:@"kCGWindowLayer"];
-        NSString* windowName = (NSString*)[windowDict objectForKey:@"kCGWindowOwnerName"];
+        NSNumber* windowPID = (NSNumber*)[windowDict objectForKey:@"kCGWindowOwnerPID"];
         
         // Only if the window represents a currently active app (windowLayer = 0)
-        if (windowLayer && windowName && [windowLayer intValue]  == 0) {
-            return windowName;
+        if (windowLayer && windowPID && [windowLayer intValue]  == 0) {
+            // Convert the PID into a int
+            int pid = [windowPID intValue];
+            NSString* bundleID = [[NSRunningApplication runningApplicationWithProcessIdentifier:pid] bundleIdentifier];
+            return bundleID;
         }
-    }
-    return nil;
-}
-
--(NSString*) bundleIDFromAppName:(NSString*) appName {
-    NSWorkspace* workspace = [NSWorkspace sharedWorkspace];
-    NSString* appPath = [workspace fullPathForApplication:appName];
-    if (appPath) {
-        NSBundle* appBundle = [NSBundle bundleWithPath:appPath];
-        return [appBundle bundleIdentifier];
     }
     return nil;
 }
 
 -(void) blockSideButtonsInApp:(id)sender {
     // Add the current most active application to the blocklist
-    NSString* topWindowAppName = [self getTopWindow];
-    NSString* topWindowBundleID = [self bundleIDFromAppName:topWindowAppName];
+    NSString* topWindowBundleID = [self getTopWindowBundleID];
+    
     if (![ignored_application_bundle_ids containsObject:topWindowBundleID]) {
         [ignored_application_bundle_ids addObject:topWindowBundleID];
         [self updateStoredBlocklist];
@@ -476,8 +468,7 @@ typedef NS_ENUM(NSInteger, MenuItem) {
 
 -(void) allowSideButtonsInApp:(id)sender {
     // Remove the current most active application from the blocklist
-    NSString* topWindowAppName = [self getTopWindow];
-    NSString* topWindowBundleID = [self bundleIDFromAppName:topWindowAppName];
+    NSString* topWindowBundleID = [self getTopWindowBundleID];
     if ([ignored_application_bundle_ids containsObject:topWindowBundleID]) {
         [ignored_application_bundle_ids removeObject:topWindowBundleID];
         [self updateStoredBlocklist];
